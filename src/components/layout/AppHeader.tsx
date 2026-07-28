@@ -1,30 +1,34 @@
 "use client";
 
-import { Landmark } from "lucide-react";
-import { RoleSwitcher } from "./RoleSwitcher";
+import { useAppState } from "@/context/AppStateContext";
+import { Calendar } from "lucide-react";
 
 export function AppHeader() {
-  return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#0F1729] text-white">
-            <Landmark size={16} />
-          </div>
-          <div className="leading-tight">
-            <p className="text-sm font-semibold text-slate-900">
-              VA Clearing
-            </p>
-            <p className="text-[11px] text-slate-400">
-              Auto-reconciliation engine
-            </p>
-          </div>
-        </div>
+  const { state, setSystemTime } = useAppState();
 
-        <div className="flex items-center gap-3">
-          {/* Simulation Clock widget slots in here during Step 5 */}
-          <RoleSwitcher />
-        </div>
+  // Ekstrak tanggal format YYYY-MM-DD dari systemTime ISO string
+  const currentSystemDate = state.systemTime ? state.systemTime.split("T")[0] : "2026-08-01";
+
+  return (
+    <header className="border-b border-slate-200 bg-white px-6 py-3.5 flex items-center justify-between shadow-xs">
+      <div className="flex items-center gap-3">
+        <span className="font-bold text-slate-900 tracking-tight text-base">VA Clearing Engine</span>
+      </div>
+
+      {/* Controller Simulasi Tanggal Sistem */}
+      <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-2xs">
+        <Calendar size={15} className="text-teal-700" />
+        <span className="text-xs font-semibold text-slate-600">Tanggal Simulasi:</span>
+        <input
+          type="date"
+          value={currentSystemDate}
+          onChange={(e) => {
+            if (e.target.value) {
+              setSystemTime(new Date(e.target.value).toISOString());
+            }
+          }}
+          className="text-xs font-mono font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+        />
       </div>
     </header>
   );

@@ -55,6 +55,7 @@ interface AppStateContextValue {
   addInvoice: (input: NewOrderInput) => Invoice;
   recordPayment: (input: NewPaymentInput) => Payment;
   invoicesForStore: (storeId: string) => Invoice[];
+  storeCredits: Record<string, number>;
 }
 
 const AppStateContext = createContext<AppStateContextValue | undefined>(
@@ -100,29 +101,88 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const store = state.stores.find((s) => s.id === input.storeId);
       const nextSeq = (state.vaSequence[input.storeId] ?? 0) + 1;
       const vaNumber = generateVaNumber(store?.code ?? "000", nextSeq);
+
+      let currentCredit = state.storeCredits[input.storeId] ?? 0;
+      let amountPaid = 0;
+      let status: "UNPAID" | "PARTIAL" | "PAID" = "UNPAID";
+      let creditDeducted = 0;
+
+      if (currentCredit > 0) {
+        if (currentCredit >= input.amount) {
+          amountPaid = input.amount;
+          status = "PAID";
+          creditDeducted = input.amount;
+        } else {
+          amountPaid = currentCredit;
+          status = "PARTIAL";
+          creditDeducted = currentCredit;
+        }
+      }
+
       const created: Invoice = {
         id: `INV-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         storeId: input.storeId,
         vaNumber,
         itemName: input.itemName,
         amount: input.amount,
-        amountPaid: 0,
+        amountPaid,
         dueDate: input.dueDate,
-        status: "UNPAID",
+        status,
         createdAt: new Date().toISOString(),
       };
+
       setState((prev) => ({
         ...prev,
         invoices: [...prev.invoices, created],
         vaSequence: { ...prev.vaSequence, [input.storeId]: nextSeq },
+        storeCredits: {
+          ...prev.storeCredits,
+          [input.storeId]: (prev.storeCredits[input.storeId] ?? 0) - creditDeducted,
+        },
       }));
       return created;
     },
-    [state.stores, state.vaSequence]
+    [state.stores, state.vaSequence, state.storeCredits]
   );
 
   const recordPayment = useCallback(
     (input: NewPaymentInput): Payment => {
+      const storeInvoices = state.invoices.filter(
+        (i) => i.storeId === input.storeId && i.status !== "PAID"
+      );
+
+      // Jika toko tidak punya tagihan aktif sama sekali, seluruh dana masuk ke Store Credit
+      if (storeInvoices.length === 0) {
+        const dummyResult = {
+          lines: [],
+          creditApplied: input.amount,
+        };
+
+        const payment: Payment = {
+          id: `PMT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          storeId: input.storeId,
+          amount: input.amount,
+          timestamp: input.timestamp ?? new Date().toISOString(),
+          allocation: dummyResult as any,
+          createdAt: new Date().toISOString(),
+        };
+
+        setState((prev) => {
+          const prevCredit = prev.storeCredits[input.storeId] ?? 0;
+          return {
+            ...prev,
+            payments: [...prev.payments, payment],
+            storeCredits: {
+              ...prev.storeCredits,
+              [input.storeId]: prevCredit + input.amount,
+            },
+          };
+        });
+
+        return payment;
+      }
+
+      // Jika ada tagihan, jalankan alokasi normal seperti biasa
       const { result, updatedInvoices } = allocatePayment(
         input.storeId,
         input.amount,
@@ -171,6 +231,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [state.stores, state.activeStoreId]
   );
 
+  const storeCredits = useMemo(() => state.storeCredits, [state.storeCredits]);
+
   const value: AppStateContextValue = {
     state,
     activeStore,
@@ -179,6 +241,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     addInvoice,
     recordPayment,
     invoicesForStore,
+    storeCredits,
   };
 
   return (
