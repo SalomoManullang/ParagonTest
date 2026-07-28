@@ -9,7 +9,8 @@ export function CreateOrderModal({ storeId, onClose }: { storeId: string; onClos
   
   const [itemName, setItemName] = useState("");
   const [amount, setAmount] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const currentSysDate = state.systemTime ? state.systemTime.split("T")[0] : new Date().toISOString().split("T")[0];
+  const [dueDate, setDueDate] = useState(currentSysDate);
   const [error, setError] = useState("");
 
   function handleSubmit(e: FormEvent) {
@@ -31,7 +32,7 @@ export function CreateOrderModal({ storeId, onClose }: { storeId: string; onClos
     }
 
     // Validasi: Jatuh tempo tidak boleh di masa lalu dari tanggal sistem aktif
-    const currentSysDate = new Date(state.systemTime).toISOString().split("T")[0];
+    const currentSysDate = state.systemTime ? state.systemTime.split("T")[0] : new Date().toISOString().split("T")[0];
     if (dueDate < currentSysDate) {
       setError(`Tanggal jatuh tempo tidak boleh di masa lalu (sebelum ${currentSysDate}).`);
       return;

@@ -9,7 +9,7 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import { AppState, Invoice, Payment, Store } from "@/types";
+import { AppState, Invoice, InvoiceStatus, Payment, Store } from "@/types";
 import { loadState, saveState } from "@/utils/storage";
 import { generateVaNumber } from "@/utils/vaGenerator";
 import { allocatePayment } from "@/utils/allocationEngine";
@@ -62,27 +62,40 @@ const AppStateContext = createContext<AppStateContextValue | undefined>(
   undefined
 );
 
+/**
+ * Fungsi helper global untuk mengevaluasi status invoice secara dinamis
+ * berdasarkan tanggal sistem (systemTime) yang sedang berjalan.
+ */
+export function getEffectiveInvoiceStatus(
+  inv: { amount: number; amountPaid: number; dueDate: string; status: InvoiceStatus },
+  systemTime: string
+): InvoiceStatus | "OVERDUE" {
+  if (inv.amountPaid >= inv.amount) return "PAID";
+
+  const sysDate = new Date(systemTime).toISOString().split("T")[0];
+  const due = new Date(inv.dueDate).toISOString().split("T")[0];
+
+  // Jika tanggal sistem sudah melewati tanggal jatuh tempo (due date)
+  if (sysDate > due) {
+    return "OVERDUE";
+  }
+
+  return inv.status;
+}
+
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(defaultState);
   const [hydrated, setHydrated] = useState(false);
 
-  // Hydrate from localStorage on mount only. This intentionally reads an
-  // external system (localStorage) and syncs it into React state once,
-  // which is the documented exception to "don't setState in an effect" —
-  // doing this in the useState initializer instead would run on the server
-  // too (where localStorage is unavailable) and risk an SSR/client
-  // hydration mismatch on the very first paint.
   useEffect(() => {
     const loaded = loadState<AppState | null>(null);
     if (loaded) {
-      // Always trust the fixed STORES list (in case shape evolves), keep the rest
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ ...loaded, stores: STORES });
     }
     setHydrated(true);
   }, []);
 
-  // Persist on every change, after initial hydration
   useEffect(() => {
     if (!hydrated) return;
     saveState(state);
@@ -93,7 +106,28 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setSystemTime = useCallback((iso: string) => {
-    setState((prev) => ({ ...prev, systemTime: iso }));
+    setState((prev) => {
+      const sysDate = new Date(iso).toISOString().split("T")[0];
+      
+      // Kunci status menjadi OVERDUE secara permanen di state jika sudah lewat waktu
+      const updatedInvoices = prev.invoices.map((inv) => {
+        // Abaikan jika sudah dibayar atau jika memang sudah permanen OVERDUE
+        if (inv.status === "PAID" || inv.status === ("OVERDUE" as any)) return inv;
+        
+        const due = new Date(inv.dueDate).toISOString().split("T")[0];
+        if (sysDate > due) {
+          // Mutate state menjadi OVERDUE 
+          return { ...inv, status: "OVERDUE" as any };
+        }
+        return inv;
+      });
+
+      return { 
+        ...prev, 
+        systemTime: iso,
+        invoices: updatedInvoices 
+      };
+    });
   }, []);
 
   const addInvoice = useCallback(
@@ -147,13 +181,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const recordPayment = useCallback(
     (input: NewPaymentInput): Payment => {
-      const storeInvoices = state.invoices.filter(
+      const activeInvoices = state.invoices.filter(
         (i) => i.storeId === input.storeId && i.status !== "PAID"
       );
 
-      // Jika toko tidak punya tagihan aktif sama sekali, seluruh dana masuk ke Store Credit
-      if (storeInvoices.length === 0) {
-        const dummyResult = {
+      // Jika tidak ada tagihan sama sekali, masukkan seluruhnya ke store credit
+      if (activeInvoices.length === 0) {
+        const dummyAllocation = {
           lines: [],
           creditApplied: input.amount,
         };
@@ -162,8 +196,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           id: `PMT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           storeId: input.storeId,
           amount: input.amount,
-          timestamp: input.timestamp ?? new Date().toISOString(),
-          allocation: dummyResult as any,
+          timestamp: input.timestamp ?? state.systemTime ?? new Date().toISOString(),
+          allocation: dummyAllocation as any,
           createdAt: new Date().toISOString(),
         };
 
@@ -182,18 +216,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         return payment;
       }
 
-      // Jika ada tagihan, jalankan alokasi normal seperti biasa
       const { result, updatedInvoices } = allocatePayment(
         input.storeId,
         input.amount,
-        state.invoices
+        state.invoices,
+        state.systemTime
       );
 
       const payment: Payment = {
         id: `PMT-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         storeId: input.storeId,
         amount: input.amount,
-        timestamp: input.timestamp ?? new Date().toISOString(),
+        timestamp: input.timestamp ?? state.systemTime ?? new Date().toISOString(),
         allocation: result,
         createdAt: new Date().toISOString(),
       };
@@ -217,7 +251,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
       return payment;
     },
-    [state.invoices]
+    [state.invoices, state.systemTime]
   );
 
   const invoicesForStore = useCallback(

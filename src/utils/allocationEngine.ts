@@ -15,7 +15,9 @@ import { AllocationLine, AllocationResult, Invoice } from "@/types";
 export function allocatePayment(
   storeId: string,
   paymentAmount: number,
-  openInvoices: Invoice[]
+  openInvoices: Invoice[],
+  systemTime: string = new Date().toISOString()
+  
 ): { result: AllocationResult; updatedInvoices: Invoice[] } {
   if (paymentAmount <= 0) {
     return {
@@ -24,13 +26,24 @@ export function allocatePayment(
     };
   }
 
+  const sysDate = systemTime.split("T")[0];
+
   // Only unsettled invoices for this store are eligible, sorted oldest due date first.
+  // Tagihan yang sudah OVERDUE (lewat due date) diblokir dari alokasi pembayaran otomatis reguler.
   const eligible = openInvoices
-    .filter(
-      (inv) =>
-        inv.storeId === storeId &&
-        (inv.status === "UNPAID" || inv.status === "PARTIAL")
-    )
+    .filter((inv) => {
+      if (inv.storeId !== storeId) return false;
+      if (inv.status !== "UNPAID" && inv.status !== "PARTIAL") return false;
+
+      // Cek apakah invoice sudah overdue berdasarkan systemTime
+      const due = inv.dueDate.split("T")[0];
+      const isOverdue = sysDate > due;
+
+      // Blokir jika overdue (tidak boleh dialokasikan otomatis oleh pembayaran VA)
+      if (isOverdue) return false;
+
+      return true;
+    })
     .slice()
     .sort(
       (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()

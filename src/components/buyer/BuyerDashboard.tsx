@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, FormEvent, useMemo } from "react";
-import { Plus, Wallet, ArrowDownToLine, CreditCard, ShieldCheck, CheckCircle2 } from "lucide-react";
-import { useAppState } from "@/context/AppStateContext";
-import { StatusBadge } from "@/components/shared/StatusBadge";
+import { Plus, Wallet, ArrowDownToLine, CreditCard, ShieldCheck, CheckCircle2, Receipt } from "lucide-react";import { useAppState } from "@/context/AppStateContext";
+import { StatusBadge, getEffectiveInvoiceStatus } from "@/components/shared/StatusBadge";
 import { CreateOrderModal } from "./CreateOrderModal";
 import { formatIDR, formatDate } from "@/utils/formatters";
 
 export function BuyerDashboard({ storeId }: { storeId: string }) {
-  const { invoicesForStore, activeStore, recordPayment, storeCredits } = useAppState();
+  // Pastikan 'state' ikut diekstrak di sini agar tidak error 'Cannot find name state'
+  const { state, invoicesForStore, activeStore, recordPayment, storeCredits } = useAppState();
   const [modalOpen, setModalOpen] = useState(false);
   const [simulateModalOpen, setSimulateModalOpen] = useState(false);
   
@@ -16,7 +16,6 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   
-  // Notif kecil mengapung di atas setelah transfer berhasil
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const invoices = useMemo(() => {
@@ -27,16 +26,30 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
 
   const filteredInvoices = useMemo(() => {
     if (statusFilter === "ALL") return invoices;
-    return invoices.filter((inv) => inv.status === statusFilter);
-  }, [invoices, statusFilter]);
+    return invoices.filter((inv) => {
+      const effStatus = getEffectiveInvoiceStatus(inv, state.systemTime);
+      return effStatus === statusFilter;
+    });
+  }, [invoices, statusFilter, state.systemTime]);
 
   const totalAmountAll = invoices.reduce((acc, inv) => acc + inv.amount, 0);
   const totalPaidAll = invoices.reduce((acc, inv) => acc + inv.amountPaid, 0);
+  // Hitung sisa tagihan khusus untuk yang statusnya BUKAN PAID dan BUKAN OVERDUE
+  const totalUnpaidAll = invoices.reduce((acc, inv) => {
+    const effStatus = getEffectiveInvoiceStatus(inv, state.systemTime);
+    if (effStatus !== "PAID" && effStatus !== "OVERDUE") {
+      return acc + (inv.amount - inv.amountPaid);
+    }
+    return acc;
+  }, 0);
   const currentStoreCredit = storeCredits[storeId] || 0;
+  
 
-  // Cek apakah ada tagihan sama sekali, atau apakah semuanya sudah lunas (PAID)
   const hasActiveInvoices = invoices.length > 0;
-  const hasUnpaidInvoices = invoices.some((inv) => inv.status !== "PAID");
+  const hasUnpaidInvoices = invoices.some((inv) => {
+    const effStatus = getEffectiveInvoiceStatus(inv, state.systemTime);
+    return effStatus !== "PAID";
+  });
   const canPay = hasActiveInvoices && hasUnpaidInvoices;
 
   const storeVaNumber = `BCA-88001-${storeId.replace('ST-', '')}`;
@@ -59,19 +72,16 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
       (l) => l.resultingStatus === "PARTIAL"
     ).length;
 
-    // Susun pesan notif kecil
     let msg = `Berhasil! Melunasi ${settledCount} tagihan`;
     if (partialCount) msg += `, ${partialCount} partial`;
     if (payment.allocation.creditApplied > 0) {
       msg += ` (Sisa Rp ${formatIDR(payment.allocation.creditApplied)} masuk ke Store Credit)`;
     }
 
-    // Tutup modal bayar langsung & tampilkan notif kecil di atas
     setSimulateModalOpen(false);
     setTransferAmount("");
     setToastMessage(msg);
 
-    // Hilangkan toast otomatis setelah 4 detik
     setTimeout(() => {
       setToastMessage(null);
     }, 4000);
@@ -79,7 +89,6 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
 
   return (
     <div className="space-y-6 relative">
-      {/* Toast Notif Kecil di Atas */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-50 flex items-center gap-3 rounded-2xl bg-slate-900 border border-slate-700 px-4 py-3 text-white shadow-2xl animate-in slide-in-from-top-5 duration-300">
           <CheckCircle2 className="text-emerald-400 shrink-0" size={20} />
@@ -103,7 +112,6 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
         </div>
 
         <div className="flex items-center gap-2.5">
-          {/* Tombol Bayar disable jika tidak ada tagihan / semua sudah lunas */}
           <button
             onClick={() => {
               if (!canPay) return;
@@ -130,7 +138,11 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
       </div>
 
       {/* Kartu Ringkasan */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Kartu Ringkasan */}
+      {/* Ubah grid-cols-3 menjadi lg:grid-cols-4 agar responsif */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        {/* Card 1: Total Seluruh Tagihan */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Seluruh Tagihan</p>
@@ -141,6 +153,7 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
           </div>
         </div>
 
+        {/* Card 2: Sudah Terbayar */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Sudah Terbayar</p>
@@ -151,6 +164,18 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
           </div>
         </div>
 
+        {/* Card 3 (BARU): Belum Terbayar */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Belum Terbayar</p>
+            <p className="text-lg font-bold font-mono text-rose-600 mt-1">{formatIDR(totalUnpaidAll)}</p>
+          </div>
+          <div className="rounded-xl bg-rose-50 p-3 text-rose-600">
+            <Receipt size={20} />
+          </div>
+        </div>
+
+        {/* Card 4: Store Credit */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Store Credit / Saldo Lebih</p>
@@ -160,6 +185,7 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
             <CreditCard size={20} />
           </div>
         </div>
+        
       </div>
 
       {/* Filter Bar & List Tagihan */}
@@ -178,6 +204,7 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
               <option value="UNPAID">Belum Dibayar (Unpaid)</option>
               <option value="PARTIAL">Sebagian (Partial)</option>
               <option value="PAID">Lunas (Paid)</option>
+              <option value="OVERDUE">Terlambat (Overdue)</option>
             </select>
           </div>
         </div>
@@ -213,19 +240,23 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredInvoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-slate-900">{inv.itemName}</td>
-                    <td className="px-6 py-4 font-mono font-semibold text-slate-800">{formatIDR(inv.amount)}</td>
-                    <td className="px-6 py-4 font-mono text-xs font-medium text-teal-700">
-                      {formatIDR(inv.amountPaid)} / {formatIDR(inv.amount)}
-                    </td>
-                    <td className="px-6 py-4 text-xs font-medium text-slate-600">{formatDate(inv.dueDate)}</td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={inv.status} />
-                    </td>
-                  </tr>
-                ))}
+                {filteredInvoices.map((inv) => {
+                  const effectiveStatus = getEffectiveInvoiceStatus(inv, state.systemTime);
+
+                  return (
+                    <tr key={inv.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-slate-900">{inv.itemName}</td>
+                      <td className="px-6 py-4 font-mono font-semibold text-slate-800">{formatIDR(inv.amount)}</td>
+                      <td className="px-6 py-4 font-mono text-xs font-medium text-teal-700">
+                        {formatIDR(inv.amountPaid)} / {formatIDR(inv.amount)}
+                      </td>
+                      <td className="px-6 py-4 text-xs font-medium text-slate-600">{formatDate(inv.dueDate)}</td>
+                      <td className="px-6 py-4">
+                        <StatusBadge status={effectiveStatus} />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
