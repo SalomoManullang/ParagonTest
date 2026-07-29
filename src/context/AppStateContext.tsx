@@ -23,9 +23,127 @@ const STORES: Store[] = [
 const DEFAULT_SYSTEM_TIME = "2026-08-01T09:00:00.000Z";
 
 function defaultState(): AppState {
+  const INITIAL_INVOICES: Invoice[] = [
+    // --- TAGIHAN MASA LALU (LUNAS & OVERDUE) ---
+    {
+      id: "INV-2026-0005",
+      storeId: "ST-001",
+      vaNumber: "BCA-88001-001",
+      itemName: "INV-2026-0005 (Material Dasar)",
+      amount: 1500000,
+      amountPaid: 1500000, // LUNAS
+      dueDate: "2026-07-15",
+      status: "PAID",
+      createdAt: "2026-07-01T08:00:00.000Z",
+    },
+    {
+      id: "INV-2026-0008",
+      storeId: "ST-001",
+      vaNumber: "BCA-88001-001",
+      itemName: "INV-2026-0008 (Restock Cat)",
+      amount: 750000,
+      amountPaid: 0,
+      dueDate: "2026-07-25", // OVERDUE (Karena default waktu sistem adalah 1 Agustus 2026)
+      status: "OVERDUE", 
+      createdAt: "2026-07-10T08:00:00.000Z",
+    },
+
+    // --- DATA TEST CASE TOKO BERKAH JAYA (Sesuai PDF) ---
+    {
+      id: "INV-2026-0012",
+      storeId: "ST-001",
+      vaNumber: "BCA-88001-001",
+      itemName: "INV-2026-0012",
+      amount: 1250000,
+      amountPaid: 0,
+      dueDate: "2026-08-05", 
+      status: "UNPAID",
+      createdAt: "2026-07-25T08:00:00.000Z",
+    },
+    {
+      id: "INV-2026-0019",
+      storeId: "ST-001",
+      vaNumber: "BCA-88001-001",
+      itemName: "INV-2026-0019",
+      amount: 3400000,
+      amountPaid: 0,
+      dueDate: "2026-08-12", 
+      status: "UNPAID",
+      createdAt: "2026-07-28T09:30:00.000Z",
+    },
+    {
+      id: "INV-2026-0021",
+      storeId: "ST-001",
+      vaNumber: "BCA-88001-001",
+      itemName: "INV-2026-0021",
+      amount: 875000,
+      amountPaid: 0,
+      dueDate: "2026-08-12", 
+      status: "UNPAID",
+      createdAt: "2026-07-29T10:15:00.000Z",
+    },
+    {
+      id: "INV-2026-0025",
+      storeId: "ST-001",
+      vaNumber: "BCA-88001-001",
+      itemName: "INV-2026-0025",
+      amount: 2000000,
+      amountPaid: 0,
+      dueDate: "2026-08-28", 
+      status: "UNPAID",
+      createdAt: "2026-07-30T11:45:00.000Z",
+    },
+    {
+      id: "INV-2026-0030",
+      storeId: "ST-001",
+      vaNumber: "BCA-88001-001",
+      itemName: "INV-2026-0030",
+      amount: 1250000,
+      amountPaid: 0,
+      dueDate: "2026-09-02", 
+      status: "UNPAID",
+      createdAt: "2026-07-31T14:20:00.000Z",
+    },
+
+// --- DATA SUMBER REJEKI (ST-002) ---
+    {
+      id: "INV-2026-0035",
+      storeId: "ST-002",
+      vaNumber: "BCA-88001-002",
+      itemName: "INV-2026-0035 (Semen & Besi)",
+      amount: 1500000,
+      amountPaid: 0,
+      dueDate: "2026-08-10", 
+      status: "UNPAID",
+      createdAt: "2026-07-20T08:00:00.000Z",
+    },
+    {
+      id: "INV-2026-0038",
+      storeId: "ST-002",
+      vaNumber: "BCA-88001-002",
+      itemName: "INV-2026-0038 (Cat & Keramik)",
+      amount: 2500000,
+      amountPaid: 0,
+      dueDate: "2026-08-15", 
+      status: "UNPAID",
+      createdAt: "2026-07-22T08:00:00.000Z",
+    },
+    {
+      id: "INV-2026-0042",
+      storeId: "ST-002",
+      vaNumber: "BCA-88001-002",
+      itemName: "INV-2026-0042 (Alat Listrik)",
+      amount: 750000,
+      amountPaid: 0,
+      dueDate: "2026-08-20", 
+      status: "UNPAID",
+      createdAt: "2026-07-25T08:00:00.000Z",
+    }
+  ];
+
   return {
     stores: STORES,
-    invoices: [],
+    invoices: INITIAL_INVOICES,
     payments: [],
     storeCredits: {},
     activeStoreId: STORES[0].id,
@@ -33,7 +151,6 @@ function defaultState(): AppState {
     vaSequence: {},
   };
 }
-
 interface NewOrderInput {
   storeId: string;
   itemName: string;
@@ -180,7 +297,7 @@ const setSystemTime = useCallback((iso: string) => {
       };
     });
   }, []);
-  
+
   const addInvoice = useCallback(
     (input: NewOrderInput): Invoice => {
       const store = state.stores.find((s) => s.id === input.storeId);

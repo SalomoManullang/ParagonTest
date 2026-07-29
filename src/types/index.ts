@@ -7,7 +7,7 @@ export interface Store {
   role: Role;
 }
 
-export type InvoiceStatus = "UNPAID" | "PARTIAL" | "PAID";
+export type InvoiceStatus = "UNPAID" | "PARTIAL" | "PAID" | "OVERDUE";
 
 export interface Invoice {
   id: string;

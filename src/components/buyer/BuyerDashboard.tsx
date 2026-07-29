@@ -110,9 +110,10 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
     const sysTime = new Date(state.systemTime || Date.now());
     sysTime.setDate(sysTime.getDate() + 2); // Tempo 2 hari
     const dueDate = sysTime.toISOString().split("T")[0];
-
-    const itemName = `Pesanan E-Commerce (${cartTotalItems} Item)`;
-
+// Generate 4 digit angka acak untuk menyesuaikan format PDF (contoh: 0045)
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    // Format selaras dengan tabel PDF
+    const itemName = `INV-2026-${randomNum} (${cartTotalItems} Item)`;
     addInvoice({
       storeId,
       itemName,
@@ -440,7 +441,7 @@ export function BuyerDashboard({ storeId }: { storeId: string }) {
         </div>
 
       </div>
-      
+
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5 bg-slate-50/50">
           <h2 className="text-sm font-bold text-slate-900">Daftar Tagihan Berjalan</h2>
