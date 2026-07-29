@@ -22,3 +22,6 @@ body {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }
+html {
+  font-size: 12px; /* Standarnya 16px. Ubah ke 14px atau 13px untuk efek seperti Chrome 80% */
+}

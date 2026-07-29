@@ -32,7 +32,7 @@ export function AppHeader() {
   }
 
   return (
-    <header className="border-b border-slate-200 bg-white px-8 py-4 flex items-center justify-between shadow-xs">
+<header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-md px-8 py-4 flex items-center justify-between shadow-xs">
       <div className="flex items-center gap-6">
         <span className="font-bold text-slate-900 tracking-tight text-lg">VA Clearing Engine</span>
         {/* Role Switcher dikembalikan di sini */}
