@@ -105,31 +105,82 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, activeStoreId: storeId }));
   }, []);
 
-  const setSystemTime = useCallback((iso: string) => {
+const setSystemTime = useCallback((iso: string) => {
     setState((prev) => {
       const sysDate = new Date(iso).toISOString().split("T")[0];
-      
-      // Kunci status menjadi OVERDUE secara permanen di state jika sudah lewat waktu
-      const updatedInvoices = prev.invoices.map((inv) => {
-        // Abaikan jika sudah dibayar atau jika memang sudah permanen OVERDUE
+      let newInvoices = [...prev.invoices];
+      let newStoreCredits = { ...prev.storeCredits };
+      const newPayments = [...prev.payments];
+
+      // Objek penyimpan total dana parsial yang ditarik per-toko
+      const refundedPerStore: Record<string, number> = {};
+
+      // 1. Kunci status menjadi OVERDUE dan tarik dana parsialnya
+      newInvoices = newInvoices.map((inv) => {
+        // Abaikan jika sudah lunas atau sudah permanen OVERDUE
         if (inv.status === "PAID" || inv.status === ("OVERDUE" as any)) return inv;
         
         const due = new Date(inv.dueDate).toISOString().split("T")[0];
         if (sysDate > due) {
-          // Mutate state menjadi OVERDUE 
-          return { ...inv, status: "OVERDUE" as any };
+          // Jika ada dana yang nyangkut (partial), catat untuk ditarik ke Store Credit
+          if (inv.amountPaid > 0) {
+            refundedPerStore[inv.storeId] = (refundedPerStore[inv.storeId] || 0) + inv.amountPaid;
+          }
+          // Mutate state menjadi OVERDUE dan hanguskan amountPaid di tagihan ini (jadi 0)
+          return { ...inv, status: "OVERDUE" as any, amountPaid: 0 };
         }
         return inv;
+      });
+
+      // 2. Alokasikan dana yang ditarik ke tagihan lain yang mepet (Auto-Clearing)
+      Object.keys(refundedPerStore).forEach((storeId) => {
+        const refundAmount = refundedPerStore[storeId];
+        let currentCredit = newStoreCredits[storeId] ?? 0;
+        
+        // Tambahkan uang yang ditarik dari Overdue ke Store Credit toko
+        currentCredit += refundAmount;
+
+        // Jika toko memiliki saldo, gunakan untuk bayar tagihan lain secara otomatis
+        if (currentCredit > 0) {
+          const { result, updatedInvoices } = allocatePayment(
+            storeId,
+            currentCredit,
+            newInvoices,
+            iso
+          );
+
+          // Timpa data invoice lama dengan hasil update dari alokasi
+          const updatedById = new Map(updatedInvoices.map((i) => [i.id, i]));
+          newInvoices = newInvoices.map((inv) => updatedById.get(inv.id) ?? inv);
+          
+          // Sisa saldo (jika ada) dikembalikan lagi menjadi Store Credit
+          newStoreCredits[storeId] = result.creditApplied;
+
+          // Buat record pembayaran agar tercatat di Payment History bahwa terjadi Auto-Clearing
+          if (result.lines.length > 0) {
+            const autoPayment: Payment = {
+              id: `PMT-AUTO-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              storeId,
+              amount: currentCredit, // total saldo kredit yang diputar
+              timestamp: iso,
+              allocation: result,
+              createdAt: new Date().toISOString(),
+            };
+            newPayments.push(autoPayment);
+          }
+        }
       });
 
       return { 
         ...prev, 
         systemTime: iso,
-        invoices: updatedInvoices 
+        invoices: newInvoices,
+        storeCredits: newStoreCredits,
+        payments: newPayments // Update riwayat pembayaran
       };
     });
   }, []);
-
+  
   const addInvoice = useCallback(
     (input: NewOrderInput): Invoice => {
       const store = state.stores.find((s) => s.id === input.storeId);
